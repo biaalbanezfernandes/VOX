@@ -1,0 +1,15 @@
+Acurácia no teste: 0.9783 (97.8%)
+
+              precision    recall  f1-score   support
+
+     validar       1.00      1.00      1.00         7
+    bloquear       1.00      1.00      1.00        13
+    cancelar       0.93      1.00      0.96        13
+      status       1.00      0.92      0.96        13
+
+    accuracy                           0.98        46
+   macro avg       0.98      0.98      0.98        46
+weighted avg       0.98      0.98      0.98        46
+
+
+Observação: o resultado depende da quantidade e diversidade das gravações.
