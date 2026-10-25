@@ -1075,12 +1075,49 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
 
+def app(environ, start_response):
+    """WSGI entrypoint para Vercel e outros servidores WSGI."""
+    method = environ.get("REQUEST_METHOD", "GET")
+    path = environ.get("PATH_INFO", "/")
+
+    if method == "GET":
+        if path == "/favicon.ico":
+            start_response("204 No Content", [])
+            return [b""]
+        data = HTML.encode("utf-8")
+        start_response("200 OK", [
+            ("Content-Type", "text/html; charset=utf-8"),
+            ("Content-Length", str(len(data)))
+        ])
+        return [data]
+
+    if method == "POST" and (path.endswith("/predict") or path == "/predict"):
+        try:
+            content_length = int(environ.get("CONTENT_LENGTH", 0) or 0)
+            raw = environ["wsgi.input"].read(content_length)
+            sr = int(environ.get("HTTP_X_SAMPLERATE", SAMPLE_RATE))
+            samples = np.frombuffer(raw, dtype=np.float32).copy()
+            result = predict(samples, sr)
+        except Exception as e:
+            result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
+
+        data = json.dumps(result).encode("utf-8")
+        start_response("200 OK", [
+            ("Content-Type", "application/json"),
+            ("Content-Length", str(len(data)))
+        ])
+        return [data]
+
+    start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
+    return [b"Not Found"]
+
+
+application = app
+
+
 class handler(Handler):
-    """Vercel Serverless Function entrypoint."""
+    """Compatibilidade legada com BaseHTTPRequestHandler."""
     pass
-
-
-app = Handler
 
 
 # ---------------------------------------------------------------------------
