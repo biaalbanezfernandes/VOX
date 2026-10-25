@@ -5,7 +5,8 @@
       "use": "@vercel/python",
       "config": {
         "includeFiles": [
-          "modelos/**"
+          "modelos/**",
+          "vox_config.py"
         ],
         "maxDuration": 60
       }

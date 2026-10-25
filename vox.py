@@ -8,10 +8,19 @@ import json
 import os
 import threading
 import time
+import traceback
 import urllib.parse
 import webbrowser
 import numpy as np
-from vox_config import SAMPLE_RATE, DURATION, N_MFCC, MODEL_PATH, LABELS_PATH
+
+try:
+    from vox_config import SAMPLE_RATE, DURATION, N_MFCC, MODEL_PATH, LABELS_PATH
+except Exception:
+    SAMPLE_RATE = 48000
+    DURATION = 1.50
+    N_MFCC = 13
+    MODEL_PATH = "modelos/vox_model.keras"
+    LABELS_PATH = "modelos/classes.json"
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 SCALER_PATH = os.path.join(BASE_DIR, "modelos", "scaler.npz")
@@ -1032,9 +1041,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            parsed = urllib.parse.urlparse(self.path)
-            path = parsed.path
-            if path == "/favicon.ico":
+            if self.path == "/favicon.ico":
                 self.send_response(204)
                 self.end_headers()
                 return
@@ -1049,75 +1056,73 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(500)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
-            self.wfile.write(f"Erro no servidor: {str(e)}".encode("utf-8"))
+            self.wfile.write(f"Erro no servidor: {str(e)}\n{traceback.format_exc()}".encode("utf-8"))
 
     def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-        if path.endswith("/predict") or path == "/predict":
-            try:
-                length = int(self.headers.get("Content-Length", 0))
-                raw = self.rfile.read(length)
-                sr = int(self.headers.get("X-Samplerate", SAMPLE_RATE))
-                samples = np.frombuffer(raw, dtype=np.float32).copy()
-
-                result = predict(samples, sr)
-            except Exception as e:
-                result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
-
-            body = json.dumps(result).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        else:
-            self.send_error(404)
-
-
-def app(environ, start_response):
-    """WSGI entrypoint para Vercel e outros servidores WSGI."""
-    method = environ.get("REQUEST_METHOD", "GET")
-    path = environ.get("PATH_INFO", "/")
-
-    if method == "GET":
-        if path == "/favicon.ico":
-            start_response("204 No Content", [])
-            return [b""]
-        data = HTML.encode("utf-8")
-        start_response("200 OK", [
-            ("Content-Type", "text/html; charset=utf-8"),
-            ("Content-Length", str(len(data)))
-        ])
-        return [data]
-
-    if method == "POST" and (path.endswith("/predict") or path == "/predict"):
         try:
-            content_length = int(environ.get("CONTENT_LENGTH", 0) or 0)
-            raw = environ["wsgi.input"].read(content_length)
-            sr = int(environ.get("HTTP_X_SAMPLERATE", SAMPLE_RATE))
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length)
+            sr = int(self.headers.get("X-Samplerate", SAMPLE_RATE))
             samples = np.frombuffer(raw, dtype=np.float32).copy()
             result = predict(samples, sr)
         except Exception as e:
             result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
 
-        data = json.dumps(result).encode("utf-8")
-        start_response("200 OK", [
-            ("Content-Type", "application/json"),
-            ("Content-Length", str(len(data)))
-        ])
-        return [data]
+        body = json.dumps(result).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
-    start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
-    return [b"Not Found"]
+
+def app(environ, start_response):
+    """WSGI entrypoint para Vercel e outros servidores WSGI."""
+    try:
+        method = environ.get("REQUEST_METHOD", "GET")
+        path = environ.get("PATH_INFO", "/")
+
+        if method == "GET":
+            if path == "/favicon.ico":
+                start_response("204 No Content", [])
+                return [b""]
+            data = HTML.encode("utf-8")
+            start_response("200 OK", [
+                ("Content-Type", "text/html; charset=utf-8"),
+                ("Content-Length", str(len(data)))
+            ])
+            return [data]
+
+        if method == "POST" and (path.endswith("/predict") or path == "/predict"):
+            try:
+                content_length = int(environ.get("CONTENT_LENGTH", 0) or 0)
+                raw = environ["wsgi.input"].read(content_length)
+                sr = int(environ.get("HTTP_X_SAMPLERATE", SAMPLE_RATE))
+                samples = np.frombuffer(raw, dtype=np.float32).copy()
+                result = predict(samples, sr)
+            except Exception as e:
+                result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
+
+            data = json.dumps(result).encode("utf-8")
+            start_response("200 OK", [
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(len(data)))
+            ])
+            return [data]
+
+        start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
+        return [b"Not Found"]
+    except Exception as e:
+        err_body = f"VOX Internal Error:\n{traceback.format_exc()}".encode("utf-8")
+        start_response("500 Internal Server Error", [
+            ("Content-Type", "text/plain; charset=utf-8"),
+            ("Content-Length", str(len(err_body)))
+        ])
+        return [err_body]
 
 
 application = app
-
-
-class handler(Handler):
-    """Compatibilidade legada com BaseHTTPRequestHandler."""
-    pass
+handler = Handler
 
 
 # ---------------------------------------------------------------------------
