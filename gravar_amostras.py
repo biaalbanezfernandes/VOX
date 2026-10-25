@@ -443,7 +443,7 @@ window.addEventListener('load', init);
 # ---------------------------------------------------------------------------
 # HTTP handler
 # ---------------------------------------------------------------------------
-class Handler(http.server.BaseHTTPRequestHandler):
+class GravarHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         pass  # silencia logs do servidor
@@ -537,7 +537,7 @@ def main():
         state["count"]  = existing
         state["target"] = max(20, existing + 1)
 
-    server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
+    server = http.server.HTTPServer(("127.0.0.1", PORT), GravarHandler)
     url    = f"http://127.0.0.1:{PORT}"
 
     print(f"\nVOX | Coleta de áudio via navegador")
