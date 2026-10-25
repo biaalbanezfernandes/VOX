@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "vox.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "vox.py"
+    }
+  ]
+}
