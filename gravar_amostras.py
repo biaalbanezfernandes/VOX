@@ -556,17 +556,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-{
-  "builds": [
-    {
-      "src": "gravar_amostras.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "gravar_amostras.py"
-    }
-  ]
-}
