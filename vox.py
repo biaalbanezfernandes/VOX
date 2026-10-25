@@ -1035,6 +1035,21 @@ def main():
         print("\nVOX encerrado.")
         server.shutdown()
 
+    {
+      "builds": [
+        {
+          "src": "vox.py",
+          "use": "@vercel/python"
+        }
+      ],
+      "routes": [
+        {
+          "src": "/(.*)",
+          "dest": "vox.py"
+        }
+      ]
+    }
+
 
 if __name__ == "__main__":
     main()
