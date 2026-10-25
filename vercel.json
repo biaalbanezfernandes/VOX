@@ -1,4 +1,22 @@
 {
-  "builds": [{"src": "vox.py", "use": "@vercel/python"}],
-  "routes": [{"src": "/(.*)", "dest": "vox.py"}]
+  "functions": {
+    "vox.py": {
+      "includeFiles": "modelos/**"
+    }
+  },
+  "builds": [
+    {
+      "src": "vox.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": "modelos/**"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "vox.py"
+    }
+  ]
 }

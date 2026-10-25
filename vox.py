@@ -8,6 +8,7 @@ import json
 import os
 import threading
 import time
+import urllib.parse
 import webbrowser
 import numpy as np
 import librosa
@@ -22,17 +23,42 @@ THRESHOLD   = 0.50
 PORT        = 5758
 
 # ---------------------------------------------------------------------------
-# Verificação de arquivos necessários
+# Carregamento seguro dos recursos / modelo
 # ---------------------------------------------------------------------------
-required = [MODEL_PATH, LABELS_PATH, SCALER_PATH]
-if not all(os.path.exists(p) for p in required):
-    raise SystemExit("Modelo não encontrado. Execute primeiro: python treinar_modelo.py")
+_resources_loaded = False
+model = None
+labels = ["validar", "bloquear", "cancelar", "status"]
+mean = None
+scale = None
+load_error = None
 
-model = keras.models.load_model(MODEL_PATH)
-with open(LABELS_PATH, encoding="utf-8") as f:
-    labels = json.load(f)
-scaler_data = np.load(SCALER_PATH)
-mean, scale = scaler_data["mean"], scaler_data["scale"]
+
+def load_resources():
+    global _resources_loaded, model, labels, mean, scale, load_error
+    if _resources_loaded:
+        return
+    try:
+        if os.path.exists(LABELS_PATH):
+            with open(LABELS_PATH, encoding="utf-8") as f:
+                labels = json.load(f)
+        if os.path.exists(SCALER_PATH):
+            scaler_data = np.load(SCALER_PATH)
+            mean, scale = scaler_data["mean"], scaler_data["scale"]
+        if os.path.exists(MODEL_PATH):
+            model = keras.models.load_model(MODEL_PATH)
+        else:
+            load_error = f"Modelo ausente em: {MODEL_PATH}"
+    except Exception as e:
+        load_error = str(e)
+    finally:
+        _resources_loaded = True
+
+
+# Tenta carregar os modelos na inicialização sem quebrar o worker se ausente
+try:
+    load_resources()
+except Exception:
+    pass
 
 # Ações acionadas por cada comando de voz
 VOICE_ACTIONS = {
@@ -110,6 +136,14 @@ def extract_features(audio: np.ndarray, sr: int) -> np.ndarray:
 
 
 def predict(samples: np.ndarray, sr: int) -> dict:
+    load_resources()
+    if model is None or mean is None or scale is None:
+        return {
+            "error": f"Modelo neural indisponível no servidor: {load_error or 'Arquivo não encontrado'}",
+            "command": "erro",
+            "confidence": 0.0
+        }
+
     t0 = time.time()
     
     # Resample se o navegador enviar em taxa diferente de 48kHz
@@ -989,7 +1023,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path in ("/", "/index.html", "/vox.py", ""):
             body = HTML.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1000,15 +1036,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        if self.path == "/predict":
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length)
-            sr = int(self.headers.get("X-Samplerate", SAMPLE_RATE))
-            samples = np.frombuffer(raw, dtype=np.float32).copy()
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path.endswith("/predict") or path == "/predict":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length)
+                sr = int(self.headers.get("X-Samplerate", SAMPLE_RATE))
+                samples = np.frombuffer(raw, dtype=np.float32).copy()
 
-            result = predict(samples, sr)
+                result = predict(samples, sr)
+            except Exception as e:
+                result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
+
             body = json.dumps(result).encode("utf-8")
-
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -1018,7 +1059,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
 
-handler = Handler
+class handler(Handler):
+    """Vercel Serverless Function entrypoint."""
+    pass
+
+
 app = Handler
 
 
