@@ -1,8 +1,4 @@
-"""VOX — Sistema de Controle por Comando de Voz.
-
-Interface moderna de assistente por voz com reconhecimento neural em tempo real.
-Comandos suportados: VALIDAR, BLOQUEAR, CANCELAR, STATUS.
-"""
+from __future__ import annotations
 import http.server
 import json
 import os
@@ -11,7 +7,11 @@ import time
 import traceback
 import urllib.parse
 import webbrowser
-import numpy as np
+
+try:
+    import numpy as np
+except Exception:
+    np = None
 
 try:
     from vox_config import SAMPLE_RATE, DURATION, N_MFCC, MODEL_PATH, LABELS_PATH
@@ -43,7 +43,10 @@ load_error = None
 
 
 def get_ml():
-    global _librosa, _keras
+    global _librosa, _keras, np
+    if np is None:
+        import numpy as _np
+        np = _np
     if _librosa is None:
         import librosa as l
         _librosa = l
