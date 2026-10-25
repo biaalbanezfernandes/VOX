@@ -11,8 +11,6 @@ import time
 import urllib.parse
 import webbrowser
 import numpy as np
-import librosa
-from tensorflow import keras
 from vox_config import SAMPLE_RATE, DURATION, N_MFCC, MODEL_PATH, LABELS_PATH
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -23,8 +21,10 @@ THRESHOLD   = 0.50
 PORT        = 5758
 
 # ---------------------------------------------------------------------------
-# Carregamento seguro dos recursos / modelo
+# Carregamento sob demanda (lazy) dos módulos pesados de ML e do modelo
 # ---------------------------------------------------------------------------
+_librosa = None
+_keras = None
 _resources_loaded = False
 model = None
 labels = ["validar", "bloquear", "cancelar", "status"]
@@ -33,11 +33,23 @@ scale = None
 load_error = None
 
 
+def get_ml():
+    global _librosa, _keras
+    if _librosa is None:
+        import librosa as l
+        _librosa = l
+    if _keras is None:
+        from tensorflow import keras as k
+        _keras = k
+    return _librosa, _keras
+
+
 def load_resources():
     global _resources_loaded, model, labels, mean, scale, load_error
     if _resources_loaded:
         return
     try:
+        lib, k = get_ml()
         if os.path.exists(LABELS_PATH):
             with open(LABELS_PATH, encoding="utf-8") as f:
                 labels = json.load(f)
@@ -45,20 +57,13 @@ def load_resources():
             scaler_data = np.load(SCALER_PATH)
             mean, scale = scaler_data["mean"], scaler_data["scale"]
         if os.path.exists(MODEL_PATH):
-            model = keras.models.load_model(MODEL_PATH)
+            model = k.models.load_model(MODEL_PATH)
         else:
             load_error = f"Modelo ausente em: {MODEL_PATH}"
     except Exception as e:
         load_error = str(e)
     finally:
         _resources_loaded = True
-
-
-# Tenta carregar os modelos na inicialização sem quebrar o worker se ausente
-try:
-    load_resources()
-except Exception:
-    pass
 
 # Ações acionadas por cada comando de voz
 VOICE_ACTIONS = {
@@ -100,11 +105,12 @@ VOICE_ACTIONS = {
 # Motor de Predição Robusto (VAD alignment + 52 features MFCC + Delta)
 # ---------------------------------------------------------------------------
 def align_voice(samples: np.ndarray, sr: int, target_duration: float = DURATION) -> np.ndarray:
+    lib, _ = get_ml()
     target_samples = int(sr * target_duration)
     frame_len = int(sr * 0.02)
     hop = int(sr * 0.01)
     
-    rms = librosa.feature.rms(y=samples, frame_length=frame_len, hop_length=hop)[0]
+    rms = lib.feature.rms(y=samples, frame_length=frame_len, hop_length=hop)[0]
     thresh = max(0.005, np.max(rms) * 0.12)
     active = np.where(rms > thresh)[0]
     
@@ -126,9 +132,10 @@ def align_voice(samples: np.ndarray, sr: int, target_duration: float = DURATION)
 
 
 def extract_features(audio: np.ndarray, sr: int) -> np.ndarray:
+    lib, _ = get_ml()
     audio = align_voice(audio, sr)
-    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=N_MFCC)
-    delta = librosa.feature.delta(mfcc)
+    mfcc = lib.feature.mfcc(y=audio, sr=sr, n_mfcc=N_MFCC)
+    delta = lib.feature.delta(mfcc)
     return np.concatenate([
         mfcc.mean(axis=1), mfcc.std(axis=1),
         delta.mean(axis=1), delta.std(axis=1)
@@ -144,11 +151,12 @@ def predict(samples: np.ndarray, sr: int) -> dict:
             "confidence": 0.0
         }
 
+    lib, _ = get_ml()
     t0 = time.time()
     
     # Resample se o navegador enviar em taxa diferente de 48kHz
     if sr != SAMPLE_RATE:
-        samples = librosa.resample(samples, orig_sr=sr, target_sr=SAMPLE_RATE)
+        samples = lib.resample(samples, orig_sr=sr, target_sr=SAMPLE_RATE)
 
     max_amp = float(np.max(np.abs(samples))) if len(samples) > 0 else 0
     if max_amp < 0.015:
@@ -1023,17 +1031,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-        if path in ("/", "/index.html", "/vox.py", ""):
+        try:
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
+            if path == "/favicon.ico":
+                self.send_response(204)
+                self.end_headers()
+                return
+
             body = HTML.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        else:
-            self.send_error(404)
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(f"Erro no servidor: {str(e)}".encode("utf-8"))
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)

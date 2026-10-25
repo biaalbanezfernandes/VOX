@@ -6,7 +6,8 @@
       "config": {
         "includeFiles": [
           "modelos/**"
-        ]
+        ],
+        "maxDuration": 60
       }
     }
   ],
