@@ -1,7 +1,4 @@
-numpy
+numpy<2.0.0
 librosa
-sounddevice
 soundfile
-scikit-learn
-tensorflow
-matplotlib
+tensorflow-cpu
