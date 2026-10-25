@@ -18,7 +18,8 @@ import soundfile as sf
 from vox_config import COMMANDS, SAMPLE_RATE, DURATION
 
 PORT = 5757
-ROOT = "dataset"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(BASE_DIR, "dataset")
 
 # ---------------------------------------------------------------------------
 # Estado compartilhado (thread-safe via lock)

@@ -14,7 +14,10 @@ import librosa
 from tensorflow import keras
 from vox_config import SAMPLE_RATE, DURATION, N_MFCC, MODEL_PATH, LABELS_PATH
 
-SCALER_PATH = "modelos/scaler.npz"
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+SCALER_PATH = os.path.join(BASE_DIR, "modelos", "scaler.npz")
+MODEL_PATH  = os.path.join(BASE_DIR, MODEL_PATH) if not os.path.isabs(MODEL_PATH) else MODEL_PATH
+LABELS_PATH = os.path.join(BASE_DIR, LABELS_PATH) if not os.path.isabs(LABELS_PATH) else LABELS_PATH
 THRESHOLD   = 0.50
 PORT        = 5758
 
@@ -1015,6 +1018,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
 
+handler = Handler
+app = Handler
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1034,21 +1041,6 @@ def main():
     except KeyboardInterrupt:
         print("\nVOX encerrado.")
         server.shutdown()
-
-    {
-      "builds": [
-        {
-          "src": "vox.py",
-          "use": "@vercel/python"
-        }
-      ],
-      "routes": [
-        {
-          "src": "/(.*)",
-          "dest": "vox.py"
-        }
-      ]
-    }
 
 
 if __name__ == "__main__":
