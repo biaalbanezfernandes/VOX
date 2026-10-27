@@ -42,11 +42,17 @@ scale = None
 load_error = None
 
 
-def get_ml():
-    global _librosa, _keras, np
+def get_np():
+    global np
     if np is None:
         import numpy as _np
         np = _np
+    return np
+
+
+def get_ml():
+    global _librosa, _keras
+    get_np()
     if _librosa is None:
         import librosa as l
         _librosa = l
@@ -61,12 +67,13 @@ def load_resources():
     if _resources_loaded:
         return
     try:
+        _np = get_np()
         lib, k = get_ml()
         if os.path.exists(LABELS_PATH):
             with open(LABELS_PATH, encoding="utf-8") as f:
                 labels = json.load(f)
         if os.path.exists(SCALER_PATH):
-            scaler_data = np.load(SCALER_PATH)
+            scaler_data = _np.load(SCALER_PATH)
             mean, scale = scaler_data["mean"], scaler_data["scale"]
         if os.path.exists(MODEL_PATH):
             model = k.models.load_model(MODEL_PATH)
@@ -116,20 +123,21 @@ VOICE_ACTIONS = {
 # ---------------------------------------------------------------------------
 # Motor de Predição Robusto (VAD alignment + 52 features MFCC + Delta)
 # ---------------------------------------------------------------------------
-def align_voice(samples: np.ndarray, sr: int, target_duration: float = DURATION) -> np.ndarray:
+def align_voice(samples, sr: int, target_duration: float = DURATION):
+    _np = get_np()
     lib, _ = get_ml()
     target_samples = int(sr * target_duration)
     frame_len = int(sr * 0.02)
     hop = int(sr * 0.01)
     
     rms = lib.feature.rms(y=samples, frame_length=frame_len, hop_length=hop)[0]
-    thresh = max(0.005, np.max(rms) * 0.12)
-    active = np.where(rms > thresh)[0]
+    thresh = max(0.005, float(_np.max(rms)) * 0.12)
+    active = _np.where(rms > thresh)[0]
     
     if len(active) == 0:
         if len(samples) >= target_samples:
             return samples[:target_samples]
-        return np.pad(samples, (0, target_samples - len(samples)))
+        return _np.pad(samples, (0, target_samples - len(samples)))
         
     start = max(0, active[0] * hop - int(sr * 0.05))
     end = min(len(samples), active[-1] * hop + int(sr * 0.05))
@@ -140,21 +148,23 @@ def align_voice(samples: np.ndarray, sr: int, target_duration: float = DURATION)
         
     pad_left = (target_samples - len(voice)) // 2
     pad_right = target_samples - len(voice) - pad_left
-    return np.pad(voice, (pad_left, pad_right))
+    return _np.pad(voice, (pad_left, pad_right))
 
 
-def extract_features(audio: np.ndarray, sr: int) -> np.ndarray:
+def extract_features(audio, sr: int):
+    _np = get_np()
     lib, _ = get_ml()
     audio = align_voice(audio, sr)
     mfcc = lib.feature.mfcc(y=audio, sr=sr, n_mfcc=N_MFCC)
     delta = lib.feature.delta(mfcc)
-    return np.concatenate([
+    return _np.concatenate([
         mfcc.mean(axis=1), mfcc.std(axis=1),
         delta.mean(axis=1), delta.std(axis=1)
     ]).astype("float32")
 
 
-def predict(samples: np.ndarray, sr: int) -> dict:
+def predict(samples, sr: int) -> dict:
+    _np = get_np()
     load_resources()
     if model is None or mean is None or scale is None:
         return {
@@ -170,7 +180,7 @@ def predict(samples: np.ndarray, sr: int) -> dict:
     if sr != SAMPLE_RATE:
         samples = lib.resample(samples, orig_sr=sr, target_sr=SAMPLE_RATE)
 
-    max_amp = float(np.max(np.abs(samples))) if len(samples) > 0 else 0
+    max_amp = float(_np.max(_np.abs(samples))) if len(samples) > 0 else 0
     if max_amp < 0.015:
         return {
             "error": "Nenhuma voz audível detectada. Fale mais próximo ao microfone.",
@@ -178,10 +188,10 @@ def predict(samples: np.ndarray, sr: int) -> dict:
         }
 
     features = extract_features(samples, SAMPLE_RATE)
-    features = ((features - mean) / np.where(scale == 0, 1, scale)).reshape(1, -1)
+    features = ((features - mean) / _np.where(scale == 0, 1, scale)).reshape(1, -1)
 
     probs = model.predict(features, verbose=0)[0]
-    best_idx = int(np.argmax(probs))
+    best_idx = int(_np.argmax(probs))
     conf = float(probs[best_idx])
     cmd = labels[best_idx]
     latency_ms = round((time.time() - t0) * 1000, 1)
@@ -1063,10 +1073,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            _np = get_np()
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length)
             sr = int(self.headers.get("X-Samplerate", SAMPLE_RATE))
-            samples = np.frombuffer(raw, dtype=np.float32).copy()
+            samples = _np.frombuffer(raw, dtype=_np.float32).copy()
             result = predict(samples, sr)
         except Exception as e:
             result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
@@ -1098,10 +1109,11 @@ def app(environ, start_response):
 
         if method == "POST" and (path.endswith("/predict") or path == "/predict"):
             try:
+                _np = get_np()
                 content_length = int(environ.get("CONTENT_LENGTH", 0) or 0)
                 raw = environ["wsgi.input"].read(content_length)
                 sr = int(environ.get("HTTP_X_SAMPLERATE", SAMPLE_RATE))
-                samples = np.frombuffer(raw, dtype=np.float32).copy()
+                samples = _np.frombuffer(raw, dtype=_np.float32).copy()
                 result = predict(samples, sr)
             except Exception as e:
                 result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
