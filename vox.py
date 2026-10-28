@@ -1145,26 +1145,41 @@ def app(environ, start_response):
         method = environ.get("REQUEST_METHOD", "GET")
         path = environ.get("PATH_INFO", "/")
 
-        if method == "GET":
-            if path == "/debug":
-                import sys
-                import subprocess
-                try:
-                    pip_list = subprocess.check_output([sys.executable, "-m", "pip", "list"], stderr=subprocess.STDOUT).decode()
-                except Exception as e:
-                    pip_list = f"Pip error: {e}"
-                debug_info = {
-                    "python": sys.version,
-                    "executable": sys.executable,
-                    "path": sys.path,
-                    "cwd": os.getcwd(),
-                    "files_in_cwd": os.listdir("."),
-                    "pip_list": pip_list,
-                    "np_import_error": _np_import_error
-                }
-                body = json.dumps(debug_info, indent=2).encode("utf-8")
-                start_response("200 OK", [("Content-Type", "application/json")])
-                return [body]
+        query = environ.get("QUERY_STRING", "")
+        if "debug" in path or "debug" in query:
+            import sys
+            import subprocess
+            pip_list = ""
+            try:
+                pip_list = subprocess.check_output([sys.executable, "-m", "pip", "list"], stderr=subprocess.STDOUT).decode()
+            except Exception as e:
+                pip_list = f"Pip error: {e}"
+            
+            # Check for any site-packages or .venv directories
+            site_dirs = {}
+            for p in sys.path:
+                if os.path.exists(p):
+                    try:
+                        site_dirs[p] = os.listdir(p)[:20]
+                    except Exception as e:
+                        site_dirs[p] = str(e)
+
+            debug_info = {
+                "python": sys.version,
+                "executable": sys.executable,
+                "path": sys.path,
+                "cwd": os.getcwd(),
+                "files_in_cwd": os.listdir("."),
+                "site_dirs": site_dirs,
+                "pip_list": pip_list,
+                "np_import_error": _np_import_error
+            }
+            body = json.dumps(debug_info, indent=2).encode("utf-8")
+            start_response("200 OK", [
+                ("Content-Type", "application/json; charset=utf-8"),
+                ("Content-Length", str(len(body)))
+            ])
+            return [body]
 
             if path == "/favicon.ico":
                 start_response("204 No Content", [])
