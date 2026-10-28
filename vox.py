@@ -1061,6 +1061,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
+            if self.path == "/debug":
+                import sys
+                import subprocess
+                try:
+                    pip_list = subprocess.check_output([sys.executable, "-m", "pip", "list"], stderr=subprocess.STDOUT).decode()
+                except Exception as e:
+                    pip_list = f"Pip error: {e}"
+                debug_info = {
+                    "python": sys.version,
+                    "executable": sys.executable,
+                    "path": sys.path,
+                    "cwd": os.getcwd(),
+                    "files_in_cwd": os.listdir("."),
+                    "pip_list": pip_list,
+                    "np_import_error": _np_import_error
+                }
+                body = json.dumps(debug_info, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
             if self.path == "/favicon.ico":
                 self.send_response(204)
                 self.end_headers()
