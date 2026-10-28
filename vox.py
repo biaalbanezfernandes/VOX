@@ -42,12 +42,19 @@ scale = None
 load_error = None
 
 
+_np_import_error = None
+
 def get_np():
-    global np
-    if np is None:
+    global np, _np_import_error
+    if np is not None:
+        return np
+    try:
         import numpy as _np
         np = _np
-    return np
+        return np
+    except Exception as e:
+        _np_import_error = f"{type(e).__name__}: {str(e)}"
+        raise RuntimeError(f"Erro ao carregar NumPy no servidor: {_np_import_error}")
 
 
 def get_ml():
@@ -1097,6 +1104,26 @@ def app(environ, start_response):
         path = environ.get("PATH_INFO", "/")
 
         if method == "GET":
+            if path == "/debug":
+                import sys
+                import subprocess
+                try:
+                    pip_list = subprocess.check_output([sys.executable, "-m", "pip", "list"], stderr=subprocess.STDOUT).decode()
+                except Exception as e:
+                    pip_list = f"Pip error: {e}"
+                debug_info = {
+                    "python": sys.version,
+                    "executable": sys.executable,
+                    "path": sys.path,
+                    "cwd": os.getcwd(),
+                    "files_in_cwd": os.listdir("."),
+                    "pip_list": pip_list,
+                    "np_import_error": _np_import_error
+                }
+                body = json.dumps(debug_info, indent=2).encode("utf-8")
+                start_response("200 OK", [("Content-Type", "application/json")])
+                return [body]
+
             if path == "/favicon.ico":
                 start_response("204 No Content", [])
                 return [b""]
