@@ -1,10 +1,12 @@
 {
+  "version": 2,
   "builds": [
     {
       "src": "vox.py",
       "use": "@vercel/python",
       "config": {
         "includeFiles": [
+          "requirements.txt",
           "modelos/**",
           "vox_config.py"
         ],
