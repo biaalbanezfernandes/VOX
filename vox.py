@@ -22,20 +22,21 @@ except Exception:
     MODEL_PATH = "modelos/vox_model.keras"
     LABELS_PATH = "modelos/classes.json"
 
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-SCALER_PATH = os.path.join(BASE_DIR, "modelos", "scaler.npz")
-MODEL_PATH  = os.path.join(BASE_DIR, MODEL_PATH) if not os.path.isabs(MODEL_PATH) else MODEL_PATH
-LABELS_PATH = os.path.join(BASE_DIR, LABELS_PATH) if not os.path.isabs(LABELS_PATH) else LABELS_PATH
-THRESHOLD   = 0.50
-PORT        = 5758
+BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+SCALER_PATH  = os.path.join(BASE_DIR, "modelos", "scaler.npz")
+WEIGHTS_PATH = os.path.join(BASE_DIR, "modelos", "weights.npz")
+MODEL_PATH   = os.path.join(BASE_DIR, MODEL_PATH) if not os.path.isabs(MODEL_PATH) else MODEL_PATH
+LABELS_PATH  = os.path.join(BASE_DIR, LABELS_PATH) if not os.path.isabs(LABELS_PATH) else LABELS_PATH
+THRESHOLD    = 0.50
+PORT         = 5758
 
 # ---------------------------------------------------------------------------
 # Carregamento sob demanda (lazy) dos módulos pesados de ML e do modelo
 # ---------------------------------------------------------------------------
 _librosa = None
-_keras = None
 _resources_loaded = False
 model = None
+model_weights = None
 labels = ["validar", "bloquear", "cancelar", "status"]
 mean = None
 scale = None
@@ -57,33 +58,37 @@ def get_np():
         raise RuntimeError(f"Erro ao carregar NumPy no servidor: {_np_import_error}")
 
 
-def get_ml():
-    global _librosa, _keras
+def get_librosa():
+    global _librosa
     get_np()
     if _librosa is None:
         import librosa as l
         _librosa = l
-    if _keras is None:
-        from tensorflow import keras as k
-        _keras = k
-    return _librosa, _keras
+    return _librosa
 
 
 def load_resources():
-    global _resources_loaded, model, labels, mean, scale, load_error
+    global _resources_loaded, model, model_weights, labels, mean, scale, load_error
     if _resources_loaded:
         return
     try:
         _np = get_np()
-        lib, k = get_ml()
+        get_librosa()
         if os.path.exists(LABELS_PATH):
             with open(LABELS_PATH, encoding="utf-8") as f:
                 labels = json.load(f)
         if os.path.exists(SCALER_PATH):
             scaler_data = _np.load(SCALER_PATH)
             mean, scale = scaler_data["mean"], scaler_data["scale"]
-        if os.path.exists(MODEL_PATH):
-            model = k.models.load_model(MODEL_PATH)
+        if os.path.exists(WEIGHTS_PATH):
+            d = _np.load(WEIGHTS_PATH)
+            model_weights = [d["w_0"], d["w_1"], d["w_2"], d["w_3"], d["w_4"], d["w_5"]]
+        elif os.path.exists(MODEL_PATH):
+            try:
+                from tensorflow import keras as k
+                model = k.models.load_model(MODEL_PATH)
+            except Exception as e:
+                load_error = f"Keras load error: {e}"
         else:
             load_error = f"Modelo ausente em: {MODEL_PATH}"
     except Exception as e:
@@ -132,7 +137,7 @@ VOICE_ACTIONS = {
 # ---------------------------------------------------------------------------
 def align_voice(samples, sr: int, target_duration: float = DURATION):
     _np = get_np()
-    lib, _ = get_ml()
+    lib = get_librosa()
     target_samples = int(sr * target_duration)
     frame_len = int(sr * 0.02)
     hop = int(sr * 0.01)
@@ -160,7 +165,7 @@ def align_voice(samples, sr: int, target_duration: float = DURATION):
 
 def extract_features(audio, sr: int):
     _np = get_np()
-    lib, _ = get_ml()
+    lib = get_librosa()
     audio = align_voice(audio, sr)
     mfcc = lib.feature.mfcc(y=audio, sr=sr, n_mfcc=N_MFCC)
     delta = lib.feature.delta(mfcc)
@@ -173,14 +178,14 @@ def extract_features(audio, sr: int):
 def predict(samples, sr: int) -> dict:
     _np = get_np()
     load_resources()
-    if model is None or mean is None or scale is None:
+    if (model is None and model_weights is None) or mean is None or scale is None:
         return {
             "error": f"Modelo neural indisponível no servidor: {load_error or 'Arquivo não encontrado'}",
             "command": "erro",
             "confidence": 0.0
         }
 
-    lib, _ = get_ml()
+    lib = get_librosa()
     t0 = time.time()
     
     # Resample se o navegador enviar em taxa diferente de 48kHz
@@ -197,7 +202,16 @@ def predict(samples, sr: int) -> dict:
     features = extract_features(samples, SAMPLE_RATE)
     features = ((features - mean) / _np.where(scale == 0, 1, scale)).reshape(1, -1)
 
-    probs = model.predict(features, verbose=0)[0]
+    if model_weights is not None:
+        w0, b0, w1, b1, w2, b2 = model_weights
+        h1 = _np.maximum(0, _np.dot(features, w0) + b0)
+        h2 = _np.maximum(0, _np.dot(h1, w1) + b1)
+        logits = _np.dot(h2, w2) + b2
+        exp = _np.exp(logits - _np.max(logits))
+        probs = (exp / _np.sum(exp))[0]
+    else:
+        probs = model.predict(features, verbose=0)[0]
+
     best_idx = int(_np.argmax(probs))
     conf = float(probs[best_idx])
     cmd = labels[best_idx]
@@ -969,16 +983,19 @@ function handlePredictionResponse(data) {
     }
   }
 
-  // Caso de erro de áudio (silêncio)
+  // Caso de erro de áudio ou servidor
   if (data.error) {
+    const isSilence = data.error.toLowerCase().includes('nenhuma voz') || data.error.toLowerCase().includes('audível');
     resBox.className = 'command-result-box';
     resIcon.textContent = '⚠️';
-    resText.textContent = 'Voz não audível';
-    resBadge.textContent = 'SILÊNCIO';
+    resText.textContent = isSilence ? 'Voz não audível' : 'Erro no Servidor';
+    resBadge.textContent = isSilence ? 'SILÊNCIO' : 'ERRO IA';
     resBadge.style.background = 'rgba(239, 68, 68, 0.15)';
     resBadge.style.color = 'var(--rose)';
     resMsg.textContent = data.error;
-    resSub.textContent = 'Certifique-se de que o microfone está próximo e fale com clareza.';
+    resSub.textContent = isSilence
+      ? 'Certifique-se de que o microfone está próximo e fale com clareza.'
+      : 'Ocorreu um erro no processamento do comando no servidor.';
     return;
   }
 

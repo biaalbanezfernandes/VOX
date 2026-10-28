@@ -157,6 +157,8 @@ def main():
     print(classification_report(y_test, pred, target_names=COMMANDS, zero_division=0))
 
     model.save(MODEL_PATH)
+    weights = {f'w_{i}': w for i, w in enumerate(model.get_weights())}
+    np.savez(os.path.join("modelos", "weights.npz"), **weights)
     with open(LABELS_PATH, "w", encoding="utf-8") as f:
         json.dump(COMMANDS, f, ensure_ascii=False, indent=2)
 
