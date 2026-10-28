@@ -651,9 +651,250 @@ HTML = r"""<!DOCTYPE html>
     display: flex;
     gap: 16px;
   }
+
+  /* ===== LOCK SCREEN OVERLAY ===== */
+  #lock-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    background: rgba(5, 5, 10, 0.97);
+    backdrop-filter: blur(24px);
+    animation: lockIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  #lock-overlay.visible { display: flex; }
+  @keyframes lockIn {
+    from { opacity: 0; transform: scale(1.04); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .lock-glow-ring {
+    position: absolute;
+    width: 280px; height: 280px;
+    border-radius: 50%;
+    border: 2px solid rgba(239, 68, 68, 0.4);
+    animation: lockPulse 1.8s ease-in-out infinite;
+  }
+  .lock-glow-ring:nth-child(2) { animation-delay: 0.6s; }
+  .lock-glow-ring:nth-child(3) { animation-delay: 1.2s; }
+  @keyframes lockPulse {
+    0%  { transform: scale(0.9); opacity: 0.7; }
+    50% { transform: scale(1.2); opacity: 0.15; }
+    100%{ transform: scale(0.9); opacity: 0.7; }
+  }
+  .lock-center {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    text-align: center;
+  }
+  .lock-icon-wrap {
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(239,68,68,0.25), transparent 70%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 64px;
+    animation: lockBounce 0.6s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes lockBounce {
+    from { transform: scale(0.2); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+  .lock-title {
+    font-size: 42px;
+    font-weight: 900;
+    letter-spacing: -1px;
+    color: #fff;
+    text-shadow: 0 0 40px rgba(239,68,68,0.6);
+  }
+  .lock-sub {
+    font-size: 15px;
+    color: var(--text-muted);
+    max-width: 360px;
+    line-height: 1.6;
+  }
+  .lock-timestamp {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--rose);
+    background: rgba(239,68,68,0.12);
+    border: 1px solid rgba(239,68,68,0.3);
+    padding: 6px 18px;
+    border-radius: 99px;
+  }
+  .unlock-btn {
+    margin-top: 8px;
+    padding: 14px 40px;
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: 99px;
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    box-shadow: 0 6px 30px rgba(239,68,68,0.45);
+    transition: all 0.2s;
+  }
+  .unlock-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(239,68,68,0.6); }
+  .unlock-btn:active { transform: scale(0.97); }
+
+  /* ===== COMMAND STATUS BANNER ===== */
+  #cmd-status-banner {
+    width: 100%;
+    max-width: 980px;
+    border-radius: 16px;
+    padding: 18px 24px;
+    display: none;
+    align-items: center;
+    gap: 16px;
+    border: 1px solid;
+    transition: all 0.4s;
+    animation: bannerIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  #cmd-status-banner.show { display: flex; }
+  @keyframes bannerIn {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .banner-icon { font-size: 32px; }
+  .banner-info { flex: 1; }
+  .banner-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .banner-title { font-size: 20px; font-weight: 800; color: #fff; }
+  .banner-detail { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .banner-status-pill {
+    padding: 8px 20px;
+    border-radius: 99px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    font-family: var(--font-mono);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .status-dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    animation: statusBlink 1.2s ease-in-out infinite;
+  }
+  @keyframes statusBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ===== AI CHARTS SECTION ===== */
+  .charts-section {
+    width: 100%;
+    max-width: 980px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .charts-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .charts-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.3px;
+  }
+  .charts-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .chart-card:hover {
+    border-color: var(--border-glow);
+    box-shadow: 0 8px 32px rgba(99,102,241,0.15);
+  }
+  .chart-card-header {
+    padding: 16px 20px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .chart-card-icon { font-size: 20px; }
+  .chart-card-title { font-size: 14px; font-weight: 700; color: #fff; }
+  .chart-card-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .chart-img-wrap {
+    padding: 16px;
+    background: #0d1117;
+  }
+  .chart-img-wrap img {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+    opacity: 0.9;
+    transition: opacity 0.2s;
+  }
+  .chart-img-wrap img:hover { opacity: 1; }
+  .chart-placeholder {
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .chart-placeholder-icon { font-size: 32px; opacity: 0.4; }
+
+  @media (max-width: 700px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    .layout-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
+
+  <!-- LOCK SCREEN OVERLAY -->
+  <div id="lock-overlay">
+    <div class="lock-glow-ring"></div>
+    <div class="lock-glow-ring"></div>
+    <div class="lock-glow-ring"></div>
+    <div class="lock-center">
+      <div class="lock-icon-wrap">🔒</div>
+      <div class="lock-title">SISTEMA BLOQUEADO</div>
+      <div class="lock-sub">Sessão suspensa por comando de voz. Nenhuma entrada aceita até desbloqueio manual.</div>
+      <div class="lock-timestamp" id="lock-ts">--:--:--</div>
+      <button class="unlock-btn" onclick="unlockSystem()" id="unlock-btn">🔓 Desbloquear Sistema</button>
+    </div>
+  </div>
+
+  <!-- COMMAND STATUS BANNER -->
+  <div id="cmd-status-banner">
+    <span class="banner-icon" id="banner-icon">✨</span>
+    <div class="banner-info">
+      <div class="banner-label" id="banner-label">ÚLTIMO COMANDO</div>
+      <div class="banner-title" id="banner-title">—</div>
+      <div class="banner-detail" id="banner-detail">—</div>
+    </div>
+    <div class="banner-status-pill" id="banner-pill">
+      <span class="status-dot" id="banner-dot"></span>
+      <span id="banner-pill-text">—</span>
+    </div>
+  </div>
 
   <!-- HEADER -->
   <header>
@@ -786,6 +1027,52 @@ HTML = r"""<!DOCTYPE html>
     <span>•</span>
     <span>Atalho: Barra de Espaço para falar</span>
   </footer>
+
+  <!-- AI TRAINING CHARTS SECTION -->
+  <section class="charts-section">
+    <div class="charts-header">
+      <span style="font-size:22px;">📈</span>
+      <span class="charts-title">Resultados do Treinamento da IA</span>
+      <span class="charts-subtitle">Gerado por <code>treinar_modelo.py</code> · Rede Neural MFCCs+Delta</span>
+    </div>
+    <div class="charts-grid">
+
+      <!-- ACURÁCIA -->
+      <div class="chart-card" id="chart-acc">
+        <div class="chart-card-header">
+          <span class="chart-card-icon">📉</span>
+          <div>
+            <div class="chart-card-title">Evolução da Acurácia</div>
+            <div class="chart-card-sub">Treino vs. Validação por época</div>
+          </div>
+        </div>
+        <div class="chart-img-wrap" id="acc-wrap">
+          <div class="chart-placeholder" id="acc-placeholder">
+            <span class="chart-placeholder-icon">🖼️</span>
+            <span>Verificando gráfico...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- MATRIZ DE CONFUSÃO -->
+      <div class="chart-card" id="chart-cm">
+        <div class="chart-card-header">
+          <span class="chart-card-icon">🔢</span>
+          <div>
+            <div class="chart-card-title">Matriz de Confusão</div>
+            <div class="chart-card-sub">Classificação normalizada por classe</div>
+          </div>
+        </div>
+        <div class="chart-img-wrap" id="cm-wrap">
+          <div class="chart-placeholder" id="cm-placeholder">
+            <span class="chart-placeholder-icon">🖼️</span>
+            <span>Verificando gráfico...</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
 
 <script>
 let audioCtx = null;
@@ -1028,6 +1315,14 @@ function handlePredictionResponse(data) {
 
   // Adiciona ao histórico
   addHistoryItem(data.command, confPct, act.icon);
+
+  // Mostra banner de status
+  showBanner(act.icon, act.title, act.badge, act.color, act.details + ' · Confiança: ' + confPct);
+
+  // Ativa bloqueio visual se comando for 'bloquear'
+  if (data.command === 'bloquear') {
+    setTimeout(() => activateLock(), 500);
+  }
 }
 
 function hexToRgb(hex) {
@@ -1063,6 +1358,84 @@ window.addEventListener('keydown', (e) => {
     toggleVoiceInput();
   }
 });
+
+// ===== LOCK SYSTEM =====
+let systemLocked = false;
+
+function activateLock() {
+  systemLocked = true;
+  const overlay = document.getElementById('lock-overlay');
+  const ts = document.getElementById('lock-ts');
+  const now = new Date();
+  ts.textContent = 'Bloqueado em: ' + now.toLocaleTimeString('pt-BR') + ' · ' + now.toLocaleDateString('pt-BR');
+  overlay.classList.add('visible');
+  // buzz-like visual on header
+  document.querySelector('header').style.borderColor = 'rgba(239,68,68,0.5)';
+  document.querySelector('header').style.boxShadow = '0 0 30px rgba(239,68,68,0.2)';
+  busy = true; // prevent recording while locked
+}
+
+function unlockSystem() {
+  systemLocked = false;
+  const overlay = document.getElementById('lock-overlay');
+  overlay.classList.remove('visible');
+  document.querySelector('header').style.borderColor = '';
+  document.querySelector('header').style.boxShadow = '';
+  busy = false;
+  showBanner('🔓', 'Sistema desbloqueado manualmente.', 'DESBLOQUEADO', '#10b981', 'Pronto para receber novos comandos.');
+}
+
+// ===== COMMAND STATUS BANNER =====
+let bannerTimer = null;
+
+function showBanner(icon, title, pill, color, detail) {
+  const banner = document.getElementById('cmd-status-banner');
+  document.getElementById('banner-icon').textContent = icon;
+  document.getElementById('banner-title').textContent = title;
+  document.getElementById('banner-detail').textContent = detail;
+  document.getElementById('banner-pill-text').textContent = pill;
+  document.getElementById('banner-label').textContent = 'STATUS DO SISTEMA';
+
+  const pillEl = document.getElementById('banner-pill');
+  const dot = document.getElementById('banner-dot');
+  pillEl.style.background = `rgba(${hexToRgb(color)}, 0.15)`;
+  pillEl.style.color = color;
+  dot.style.background = color;
+
+  banner.style.background = `rgba(${hexToRgb(color)}, 0.06)`;
+  banner.style.borderColor = `rgba(${hexToRgb(color)}, 0.3)`;
+
+  banner.classList.remove('show');
+  void banner.offsetWidth; // reflow to restart animation
+  banner.classList.add('show');
+
+  if (bannerTimer) clearTimeout(bannerTimer);
+  if (pill !== 'BLOQUEADO') {
+    bannerTimer = setTimeout(() => banner.classList.remove('show'), 8000);
+  }
+}
+
+
+// ===== LOAD AI CHARTS =====
+function loadChartImage(imgSrc, wrapId, placeholderId) {
+  const wrap = document.getElementById(wrapId);
+  const placeholder = document.getElementById(placeholderId);
+  const img = new Image();
+  img.onload = () => {
+    placeholder.style.display = 'none';
+    img.alt = wrapId.includes('acc') ? 'Gráfico de acurácia do modelo VOX' : 'Matriz de confusão do modelo VOX';
+    wrap.appendChild(img);
+  };
+  img.onerror = () => {
+    placeholder.innerHTML = '<span class="chart-placeholder-icon" style="font-size:28px;opacity:.4;">📊</span><span style="color:var(--text-dim);font-size:12px;">Gráfico não disponível.<br>Execute <code>python treinar_modelo.py</code> para gerá-lo.</span>';
+  };
+  img.src = imgSrc + '?t=' + Date.now();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadChartImage('/resultados/acuracia.png', 'acc-wrap', 'acc-placeholder');
+  loadChartImage('/resultados/matriz_confusao.png', 'cm-wrap', 'cm-placeholder');
+});
 </script>
 </body>
 </html>
@@ -1081,6 +1454,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self.path == "/favicon.ico":
                 self.send_response(204)
                 self.end_headers()
+                return
+
+            # Serve static image files from resultados/
+            if self.path.startswith("/resultados/"):
+                fname = os.path.basename(self.path)
+                fpath = os.path.join(BASE_DIR, "resultados", fname)
+                if os.path.exists(fpath) and fname.lower().endswith(".png"):
+                    with open(fpath, "rb") as f:
+                        img_bytes = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/png")
+                    self.send_header("Content-Length", str(len(img_bytes)))
+                    self.end_headers()
+                    self.wfile.write(img_bytes)
+                else:
+                    self.send_response(404)
+                    self.end_headers()
                 return
 
             body = HTML.encode("utf-8")
@@ -1124,6 +1514,20 @@ def app(environ, start_response):
             if path == "/favicon.ico":
                 start_response("204 No Content", [])
                 return [b""]
+            if path.startswith("/resultados/"):
+                fname = os.path.basename(path)
+                fpath = os.path.join(BASE_DIR, "resultados", fname)
+                if os.path.exists(fpath) and fname.lower().endswith(".png"):
+                    with open(fpath, "rb") as f:
+                        img_bytes = f.read()
+                    start_response("200 OK", [
+                        ("Content-Type", "image/png"),
+                        ("Content-Length", str(len(img_bytes)))
+                    ])
+                    return [img_bytes]
+                else:
+                    start_response("404 Not Found", [])
+                    return [b""]
             data = HTML.encode("utf-8")
             start_response("200 OK", [
                 ("Content-Type", "text/html; charset=utf-8"),
