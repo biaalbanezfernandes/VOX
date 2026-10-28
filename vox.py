@@ -1079,7 +1079,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             clean_path = (self.headers.get("x-matched-path") or self.headers.get("x-forwarded-uri") or self.path or "").rstrip("/")
-            if clean_path.endswith("/debug") or self.path in ("/debug", "/debug/"):
+            if "debug" in self.path or "debug" in clean_path:
                 import sys
                 import subprocess
                 try:
