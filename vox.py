@@ -142,8 +142,15 @@ def align_voice(samples, sr: int, target_duration: float = DURATION):
     frame_len = int(sr * 0.02)
     hop = int(sr * 0.01)
     
-    rms = lib.feature.rms(y=samples, frame_length=frame_len, hop_length=hop)[0]
-    thresh = max(0.005, float(_np.max(rms)) * 0.12)
+    try:
+        rms = lib.feature.rms(y=samples, frame_length=frame_len, hop_length=hop)[0]
+    except Exception:
+        pad_len = frame_len // 2
+        padded = _np.pad(samples, pad_len, mode='reflect')
+        frames = _np.lib.stride_tricks.sliding_window_view(padded, frame_len)[::hop]
+        rms = _np.sqrt(_np.mean(frames**2, axis=-1))
+
+    thresh = max(0.005, float(_np.max(rms)) * 0.12) if len(rms) > 0 else 0.005
     active = _np.where(rms > thresh)[0]
     
     if len(active) == 0:
@@ -188,9 +195,18 @@ def predict(samples, sr: int) -> dict:
     lib = get_librosa()
     t0 = time.time()
     
+    if sr <= 0:
+        sr = SAMPLE_RATE
+
     # Resample se o navegador enviar em taxa diferente de 48kHz
-    if sr != SAMPLE_RATE:
-        samples = lib.resample(samples, orig_sr=sr, target_sr=SAMPLE_RATE)
+    if sr != SAMPLE_RATE and len(samples) > 0:
+        try:
+            samples = lib.resample(samples, orig_sr=sr, target_sr=SAMPLE_RATE)
+        except Exception:
+            old_idx = _np.linspace(0, len(samples) - 1, len(samples))
+            new_len = int(len(samples) * SAMPLE_RATE / sr)
+            new_idx = _np.linspace(0, len(samples) - 1, new_len)
+            samples = _np.interp(new_idx, old_idx, samples).astype("float32")
 
     max_amp = float(_np.max(_np.abs(samples))) if len(samples) > 0 else 0
     if max_amp < 0.015:
@@ -1153,7 +1169,7 @@ function stopWave() {
 }
 
 async function toggleVoiceInput() {
-  if (busy) return;
+  if (busy || systemLocked) return;
   const ok = await initMicrophone();
   if (!ok) return;
 
@@ -1182,6 +1198,11 @@ async function toggleVoiceInput() {
   startWave(analyser);
 
   const proc = audioCtx.createScriptProcessor(4096, 1, 1);
+  const muteGain = audioCtx.createGain();
+  muteGain.gain.value = 0;
+  proc.connect(muteGain);
+  muteGain.connect(audioCtx.destination);
+
   let chunks = [], total = 0, done = false;
 
   proc.onaudioprocess = (e) => {
@@ -1193,6 +1214,7 @@ async function toggleVoiceInput() {
       done = true;
       proc.disconnect();
       src.disconnect();
+      muteGain.disconnect();
       stopWave();
 
       const out = new Float32Array(nFrames);
@@ -1208,7 +1230,6 @@ async function toggleVoiceInput() {
   };
 
   src.connect(proc);
-  proc.connect(audioCtx.destination);
 }
 
 async function sendAudioToBackend(pcm, sr) {
@@ -1240,8 +1261,8 @@ async function sendAudioToBackend(pcm, sr) {
   } finally {
     micTxt.textContent = 'FALAR';
     micIcon.textContent = '🎙️';
-    lead.textContent = 'Aguardando próximo comando';
-    busy = false;
+    lead.textContent = systemLocked ? 'Sistema Bloqueado' : 'Aguardando próximo comando';
+    if (!systemLocked) busy = false;
   }
 }
 
@@ -1321,14 +1342,16 @@ function handlePredictionResponse(data) {
 
   // Ativa bloqueio visual se comando for 'bloquear'
   if (data.command === 'bloquear') {
-    setTimeout(() => activateLock(), 500);
+    setTimeout(() => activateLock(), 300);
   }
 }
 
 function hexToRgb(hex) {
-  let c = hex.substring(1);
-  if(c.length === 3) c = c.split('').map(x=>x+x).join('');
+  if (!hex || typeof hex !== 'string') return '99,102,241';
+  let c = hex.startsWith('#') ? hex.substring(1) : hex;
+  if (c.length === 3) c = c.split('').map(x => x + x).join('');
   const num = parseInt(c, 16);
+  if (isNaN(num)) return '99,102,241';
   return [(num >> 16) & 255, (num >> 8) & 255, num & 255].join(',');
 }
 
@@ -1353,7 +1376,7 @@ function addHistoryItem(cmd, conf, icon) {
 
 // Atalho Barra de Espaço
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && !e.repeat && !busy) {
+  if (e.code === 'Space' && !e.repeat && !busy && !systemLocked) {
     e.preventDefault();
     toggleVoiceInput();
   }
@@ -1364,24 +1387,23 @@ let systemLocked = false;
 
 function activateLock() {
   systemLocked = true;
+  busy = true; // prevent recording while locked
   const overlay = document.getElementById('lock-overlay');
   const ts = document.getElementById('lock-ts');
   const now = new Date();
   ts.textContent = 'Bloqueado em: ' + now.toLocaleTimeString('pt-BR') + ' · ' + now.toLocaleDateString('pt-BR');
   overlay.classList.add('visible');
-  // buzz-like visual on header
   document.querySelector('header').style.borderColor = 'rgba(239,68,68,0.5)';
   document.querySelector('header').style.boxShadow = '0 0 30px rgba(239,68,68,0.2)';
-  busy = true; // prevent recording while locked
 }
 
 function unlockSystem() {
   systemLocked = false;
+  busy = false;
   const overlay = document.getElementById('lock-overlay');
   overlay.classList.remove('visible');
   document.querySelector('header').style.borderColor = '';
   document.querySelector('header').style.boxShadow = '';
-  busy = false;
   showBanner('🔓', 'Sistema desbloqueado manualmente.', 'DESBLOQUEADO', '#10b981', 'Pronto para receber novos comandos.');
 }
 
@@ -1424,9 +1446,12 @@ function loadChartImage(imgSrc, wrapId, placeholderId) {
   img.onload = () => {
     placeholder.style.display = 'none';
     img.alt = wrapId.includes('acc') ? 'Gráfico de acurácia do modelo VOX' : 'Matriz de confusão do modelo VOX';
+    const old = wrap.querySelector('img');
+    if (old) old.remove();
     wrap.appendChild(img);
   };
   img.onerror = () => {
+    placeholder.style.display = 'flex';
     placeholder.innerHTML = '<span class="chart-placeholder-icon" style="font-size:28px;opacity:.4;">📊</span><span style="color:var(--text-dim);font-size:12px;">Gráfico não disponível.<br>Execute <code>python treinar_modelo.py</code> para gerá-lo.</span>';
   };
   img.src = imgSrc + '?t=' + Date.now();
@@ -1449,27 +1474,40 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Samplerate")
+        self.end_headers()
+
     def do_GET(self):
         try:
-            if self.path == "/favicon.ico":
+            clean_path = urllib.parse.urlparse(self.path).path
+            if clean_path == "/favicon.ico":
                 self.send_response(204)
+                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 return
 
             # Serve static image files from resultados/
-            if self.path.startswith("/resultados/"):
-                fname = os.path.basename(self.path)
+            if clean_path.startswith("/resultados/"):
+                fname = os.path.basename(clean_path)
                 fpath = os.path.join(BASE_DIR, "resultados", fname)
-                if os.path.exists(fpath) and fname.lower().endswith(".png"):
+                if os.path.exists(fpath) and fname.lower().endswith((".png", ".jpg", ".jpeg", ".svg")):
                     with open(fpath, "rb") as f:
                         img_bytes = f.read()
                     self.send_response(200)
-                    self.send_header("Content-Type", "image/png")
+                    content_type = "image/png" if fname.lower().endswith(".png") else "image/jpeg"
+                    self.send_header("Content-Type", content_type)
                     self.send_header("Content-Length", str(len(img_bytes)))
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Cache-Control", "no-cache")
                     self.end_headers()
                     self.wfile.write(img_bytes)
                 else:
                     self.send_response(404)
+                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                 return
 
@@ -1477,11 +1515,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body)
         except Exception as e:
             self.send_response(500)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(f"Erro no servidor: {str(e)}\n{traceback.format_exc()}".encode("utf-8"))
 
@@ -1489,17 +1529,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             _np = get_np()
             length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length)
+            raw = self.rfile.read(length) if length > 0 else b""
             sr = int(self.headers.get("X-Samplerate", SAMPLE_RATE))
-            samples = _np.frombuffer(raw, dtype=_np.float32).copy()
+            if len(raw) % 4 != 0:
+                raw = raw[:len(raw) - (len(raw) % 4)]
+            samples = _np.frombuffer(raw, dtype=_np.float32).copy() if len(raw) > 0 else _np.zeros(0, dtype=_np.float32)
             result = predict(samples, sr)
         except Exception as e:
             result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
 
-        body = json.dumps(result).encode("utf-8")
+        body = json.dumps(result, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1507,59 +1550,82 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def app(environ, start_response):
     """WSGI entrypoint para Vercel e outros servidores WSGI."""
     try:
-        method = environ.get("REQUEST_METHOD", "GET")
-        path = environ.get("PATH_INFO", "/")
+        method = environ.get("REQUEST_METHOD", "GET").upper()
+        raw_path = environ.get("PATH_INFO", "") or environ.get("REQUEST_URI", "") or "/"
+        path = urllib.parse.urlparse(raw_path).path
+
+        if method == "OPTIONS":
+            start_response("204 No Content", [
+                ("Access-Control-Allow-Origin", "*"),
+                ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+                ("Access-Control-Allow-Headers", "Content-Type, X-Samplerate")
+            ])
+            return [b""]
 
         if method == "GET":
             if path == "/favicon.ico":
-                start_response("204 No Content", [])
+                start_response("204 No Content", [("Access-Control-Allow-Origin", "*")])
                 return [b""]
             if path.startswith("/resultados/"):
                 fname = os.path.basename(path)
                 fpath = os.path.join(BASE_DIR, "resultados", fname)
-                if os.path.exists(fpath) and fname.lower().endswith(".png"):
+                if os.path.exists(fpath) and fname.lower().endswith((".png", ".jpg", ".jpeg", ".svg")):
                     with open(fpath, "rb") as f:
                         img_bytes = f.read()
+                    content_type = "image/png" if fname.lower().endswith(".png") else "image/jpeg"
                     start_response("200 OK", [
-                        ("Content-Type", "image/png"),
-                        ("Content-Length", str(len(img_bytes)))
+                        ("Content-Type", content_type),
+                        ("Content-Length", str(len(img_bytes))),
+                        ("Access-Control-Allow-Origin", "*"),
+                        ("Cache-Control", "no-cache")
                     ])
                     return [img_bytes]
                 else:
-                    start_response("404 Not Found", [])
-                    return [b""]
+                    start_response("404 Not Found", [
+                        ("Content-Type", "text/plain; charset=utf-8"),
+                        ("Access-Control-Allow-Origin", "*")
+                    ])
+                    return [b"Not Found"]
             data = HTML.encode("utf-8")
             start_response("200 OK", [
                 ("Content-Type", "text/html; charset=utf-8"),
-                ("Content-Length", str(len(data)))
+                ("Content-Length", str(len(data))),
+                ("Access-Control-Allow-Origin", "*")
             ])
             return [data]
 
-        if method == "POST" and (path.endswith("/predict") or path == "/predict"):
+        if method == "POST":
             try:
                 _np = get_np()
                 content_length = int(environ.get("CONTENT_LENGTH", 0) or 0)
-                raw = environ["wsgi.input"].read(content_length)
+                raw = environ["wsgi.input"].read(content_length) if content_length > 0 else b""
                 sr = int(environ.get("HTTP_X_SAMPLERATE", SAMPLE_RATE))
-                samples = _np.frombuffer(raw, dtype=_np.float32).copy()
+                if len(raw) % 4 != 0:
+                    raw = raw[:len(raw) - (len(raw) % 4)]
+                samples = _np.frombuffer(raw, dtype=_np.float32).copy() if len(raw) > 0 else _np.zeros(0, dtype=_np.float32)
                 result = predict(samples, sr)
             except Exception as e:
                 result = {"error": f"Erro interno ao predizer áudio: {str(e)}"}
 
-            data = json.dumps(result).encode("utf-8")
+            data = json.dumps(result, ensure_ascii=False).encode("utf-8")
             start_response("200 OK", [
-                ("Content-Type", "application/json"),
-                ("Content-Length", str(len(data)))
+                ("Content-Type", "application/json; charset=utf-8"),
+                ("Content-Length", str(len(data))),
+                ("Access-Control-Allow-Origin", "*")
             ])
             return [data]
 
-        start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
+        start_response("404 Not Found", [
+            ("Content-Type", "text/plain; charset=utf-8"),
+            ("Access-Control-Allow-Origin", "*")
+        ])
         return [b"Not Found"]
     except Exception as e:
         err_body = f"VOX Internal Error:\n{traceback.format_exc()}".encode("utf-8")
         start_response("500 Internal Server Error", [
             ("Content-Type", "text/plain; charset=utf-8"),
-            ("Content-Length", str(len(err_body)))
+            ("Content-Length", str(len(err_body))),
+            ("Access-Control-Allow-Origin", "*")
         ])
         return [err_body]
 

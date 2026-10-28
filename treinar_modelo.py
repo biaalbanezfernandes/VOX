@@ -154,7 +154,12 @@ def main():
     print(f"\n==========================================")
     print(f"Acurácia no conjunto de teste: {acc:.3f} ({acc*100:.1f}%)")
     print(f"==========================================\n")
-    print(classification_report(y_test, pred, target_names=COMMANDS, zero_division=0))
+    report = classification_report(y_test, pred, target_names=COMMANDS, zero_division=0)
+    print(report)
+    with open(os.path.join(RESULTS, "avaliacao.txt"), "w", encoding="utf-8") as f:
+        f.write(f"Acurácia no teste: {acc:.4f} ({acc*100:.1f}%)\n\n")
+        f.write(report)
+        f.write("\n\nObservação: o resultado depende da quantidade e diversidade das gravações.\n")
 
     model.save(MODEL_PATH)
     weights = {f'w_{i}': w for i, w in enumerate(model.get_weights())}

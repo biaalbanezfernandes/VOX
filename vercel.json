@@ -8,7 +8,8 @@
         "includeFiles": [
           "requirements.txt",
           "modelos/**",
-          "vox_config.py"
+          "vox_config.py",
+          "resultados/**"
         ],
         "maxDuration": 60
       }

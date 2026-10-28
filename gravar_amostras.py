@@ -370,7 +370,10 @@ async function startRecording() {
 
   srcNode.connect(analyser);
   srcNode.connect(processor);
-  processor.connect(audioCtx.destination);
+  const muteGain = audioCtx.createGain();
+  muteGain.gain.value = 0;
+  processor.connect(muteGain);
+  muteGain.connect(audioCtx.destination);
   startWaveAnimation();
 
   setStatus('🔴 GRAVANDO — diga: ' + stateData.command.toUpperCase(), 'recording');
@@ -383,6 +386,7 @@ async function startRecording() {
     if (totalFrames >= nFrames) {
       recording = false;
       processor.disconnect();
+      muteGain.disconnect();
       srcNode.disconnect();
       stopWaveAnimation();
       analyser = null;
@@ -485,10 +489,12 @@ class GravarHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/save":
             length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length)
+            raw = self.rfile.read(length) if length > 0 else b""
             sr = int(self.headers.get("X-Samplerate", SAMPLE_RATE))
 
-            samples = np.frombuffer(raw, dtype=np.float32).copy()
+            if len(raw) % 4 != 0:
+                raw = raw[:len(raw) - (len(raw) % 4)]
+            samples = np.frombuffer(raw, dtype=np.float32).copy() if len(raw) > 0 else np.zeros(0, dtype=np.float32)
 
             with _lock:
                 if state["done"]:
